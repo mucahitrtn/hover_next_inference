@@ -34,17 +34,25 @@ def update_dicts(pinst_, pcls_, pcls_out, t_, old_ids, initial_ids):
 
     new_ids = [p[0] for p in props]
 
-    for i in np.setdiff1d(old_ids, new_ids):
-        try:
-            del pcls_out[str(i)]
-        except KeyError:
-            pass
-    for i in np.setdiff1d(new_ids, initial_ids):
-        try:
-            del pcls_new[str(i)]
-        except KeyError:
-            pass
-    return pcls_out | pcls_new
+    # Previously the code removed IDs from ``pcls_out`` and ``pcls_new``
+    # based on differences between ``old_ids`` and ``new_ids``. This
+    # occasionally resulted in ``KeyError`` when downstream logic
+    # expected those entries to persist. We now keep all existing
+    # entries and simply merge the dictionaries.
+    #
+    # for i in np.setdiff1d(old_ids, new_ids):
+    #     try:
+    #         del pcls_out[str(i)]
+    #     except KeyError:
+    #         pass
+    # for i in np.setdiff1d(new_ids, initial_ids):
+    #     try:
+    #         del pcls_new[str(i)]
+    #     except KeyError:
+    #         pass
+
+    pcls_out.update(pcls_new)
+    return pcls_out
 
 
 def write(pinst_out, pcls_out, running_max, res, params, class_labels, res_poly):
