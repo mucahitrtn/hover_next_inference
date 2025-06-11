@@ -334,6 +334,28 @@ class WholeSlideDataset(Dataset):
             self.crop_reference_cxy = self.crop_reference_cxy[~oob_id]
             self.crop_metadatas = self.crop_metadatas[:, ~oob_id]
 
+        # Some tiny slides might not contain any fully in-bounds tiles. If
+        # ``remove_oob`` removed all entries, fall back to a single central
+        # coordinate so that downstream code receives at least one crop.  This
+        # mimics the behaviour introduced in ``_build_reference_grid``.
+        if len(self.crop_reference_cxy) == 0:
+            center_cxy = np.array(
+                [
+                    [
+                        self.level_dimensions[self.crop_reference_level][0] // 2,
+                        self.level_dimensions[self.crop_reference_level][1] // 2,
+                    ]
+                ]
+            )
+            self.crop_reference_cxy = center_cxy
+            self.crop_metadatas = self._build_crop_metadatas(
+                self.crop_sizes_px,
+                self.crop_magnifications,
+                self.level_magnifications,
+                self.crop_reference_cxy,
+                self.crop_reference_level,
+            )
+
     @staticmethod
     def _pil_rgba2rgb(
         image: PIL.Image, default_background: Optional[List[int]] = None
