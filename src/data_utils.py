@@ -334,6 +334,28 @@ class WholeSlideDataset(Dataset):
             self.crop_reference_cxy = self.crop_reference_cxy[~oob_id]
             self.crop_metadatas = self.crop_metadatas[:, ~oob_id]
 
+        # Some tiny slides might not contain any fully in-bounds tiles. If
+        # ``remove_oob`` removed all entries, fall back to a single central
+        # coordinate so that downstream code receives at least one crop.  This
+        # mimics the behaviour introduced in ``_build_reference_grid``.
+        if len(self.crop_reference_cxy) == 0:
+            center_cxy = np.array(
+                [
+                    [
+                        self.level_dimensions[self.crop_reference_level][0] // 2,
+                        self.level_dimensions[self.crop_reference_level][1] // 2,
+                    ]
+                ]
+            )
+            self.crop_reference_cxy = center_cxy
+            self.crop_metadatas = self._build_crop_metadatas(
+                self.crop_sizes_px,
+                self.crop_magnifications,
+                self.level_magnifications,
+                self.crop_reference_cxy,
+                self.crop_reference_level,
+            )
+
     @staticmethod
     def _pil_rgba2rgb(
         image: PIL.Image, default_background: Optional[List[int]] = None
@@ -604,6 +626,16 @@ class WholeSlideDataset(Dataset):
         n_h = np.floor(
             (1 / padding_factor) * (level_shape[1] / level_crop_size_px - 1)
         ).astype(int)
+
+        # Handle tiny images where ``n_w`` or ``n_h`` might be computed as
+        # ``0`` or even a negative value. In those cases the slide is smaller
+        # than the desired crop size and a grid cannot be formed using the
+        # default formula.  Fall back to a single crop centred on the image to
+        # ensure downstream logic receives at least one coordinate.
+        if n_w < 1 or n_h < 1:
+            c_x = np.array([level_shape[0] // 2], dtype=int)
+            c_y = np.array([level_shape[1] // 2], dtype=int)
+            return np.array([c_x, c_y]).T
 
         # Compute the residual margin at each side of the image
         margin_w = (
