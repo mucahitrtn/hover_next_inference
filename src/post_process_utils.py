@@ -28,9 +28,14 @@ def update_dicts(pinst_, pcls_, pcls_out, t_, old_ids, initial_ids):
     pcls_new = {}
     for id_, cen in props:
         try:
-            pcls_new[str(id_)] = (pcls_[str(id_)], (cen[0] + t_[2], cen[1] + t_[0]))
+            cls = pcls_[str(id_)]
         except KeyError:
-            pcls_new[str(id_)] = (pcls_out[str(id_)], (cen[0] + t_[2], cen[1] + t_[0]))
+            # ``pcls_`` may not contain the label if the instance was
+            # filtered out during processing. Reuse the existing label from
+            # ``pcls_out`` when available.
+            cls = pcls_out[str(id_)][0]
+
+        pcls_new[str(id_)] = (cls, (cen[0] + t_[2], cen[1] + t_[0]))
 
     new_ids = [p[0] for p in props]
 
