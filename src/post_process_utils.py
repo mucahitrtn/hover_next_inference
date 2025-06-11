@@ -28,23 +28,36 @@ def update_dicts(pinst_, pcls_, pcls_out, t_, old_ids, initial_ids):
     pcls_new = {}
     for id_, cen in props:
         try:
-            pcls_new[str(id_)] = (pcls_[str(id_)], (cen[0] + t_[2], cen[1] + t_[0]))
+            cls = pcls_[str(id_)]
         except KeyError:
-            pcls_new[str(id_)] = (pcls_out[str(id_)], (cen[0] + t_[2], cen[1] + t_[0]))
+            # ``pcls_`` may not contain the label if the instance was
+            # filtered out during processing. Reuse the existing label from
+            # ``pcls_out`` when available.
+            cls = pcls_out[str(id_)][0]
+
+        pcls_new[str(id_)] = (cls, (cen[0] + t_[2], cen[1] + t_[0]))
 
     new_ids = [p[0] for p in props]
 
-    for i in np.setdiff1d(old_ids, new_ids):
-        try:
-            del pcls_out[str(i)]
-        except KeyError:
-            pass
-    for i in np.setdiff1d(new_ids, initial_ids):
-        try:
-            del pcls_new[str(i)]
-        except KeyError:
-            pass
-    return pcls_out | pcls_new
+    # Previously the code removed IDs from ``pcls_out`` and ``pcls_new``
+    # based on differences between ``old_ids`` and ``new_ids``. This
+    # occasionally resulted in ``KeyError`` when downstream logic
+    # expected those entries to persist. We now keep all existing
+    # entries and simply merge the dictionaries.
+    #
+    # for i in np.setdiff1d(old_ids, new_ids):
+    #     try:
+    #         del pcls_out[str(i)]
+    #     except KeyError:
+    #         pass
+    # for i in np.setdiff1d(new_ids, initial_ids):
+    #     try:
+    #         del pcls_new[str(i)]
+    #     except KeyError:
+    #         pass
+
+    pcls_out.update(pcls_new)
+    return pcls_out
 
 
 def write(pinst_out, pcls_out, running_max, res, params, class_labels, res_poly):
@@ -105,8 +118,33 @@ def write(pinst_out, pcls_out, running_max, res, params, class_labels, res_poly)
                     obj = keep_objects[id_ - 1]
                     if obj is None:
                         continue
-                    written_mask = larger_subregion[obj] == id_
-                    pinst_reg[obj][written_mask] = id_
+                    # ``obj`` may extend beyond the new tile when a region
+                    # lies on an image boundary.  Intersect the slice with both
+                    # the written and current prediction shapes to avoid index
+                    # mismatches that cause ``IndexError``.
+                    y_slice, x_slice = obj
+                    y_start = 0 if y_slice.start is None else y_slice.start
+                    y_stop = (
+                        pinst_reg.shape[0]
+                        if y_slice.stop is None
+                        else y_slice.stop
+                    )
+                    x_start = 0 if x_slice.start is None else x_slice.start
+                    x_stop = (
+                        pinst_reg.shape[1]
+                        if x_slice.stop is None
+                        else x_slice.stop
+                    )
+
+                    y_stop = min(y_stop, larger_subregion.shape[0], pinst_reg.shape[0])
+                    x_stop = min(x_stop, larger_subregion.shape[1], pinst_reg.shape[1])
+
+                    if y_stop <= y_start or x_stop <= x_start:
+                        continue
+
+                    obj_adj = (slice(y_start, y_stop), slice(x_start, x_stop))
+                    written_mask = larger_subregion[obj_adj] == id_
+                    pinst_reg[obj_adj][written_mask] = id_
 
             old_ids = np.concatenate(old_ids)
             pcls_out = update_dicts(pinst_, pcls_, pcls_out, t_, old_ids, initial_ids)
