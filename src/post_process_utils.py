@@ -113,8 +113,33 @@ def write(pinst_out, pcls_out, running_max, res, params, class_labels, res_poly)
                     obj = keep_objects[id_ - 1]
                     if obj is None:
                         continue
-                    written_mask = larger_subregion[obj] == id_
-                    pinst_reg[obj][written_mask] = id_
+                    # ``obj`` may extend beyond the new tile when a region
+                    # lies on an image boundary.  Intersect the slice with both
+                    # the written and current prediction shapes to avoid index
+                    # mismatches that cause ``IndexError``.
+                    y_slice, x_slice = obj
+                    y_start = 0 if y_slice.start is None else y_slice.start
+                    y_stop = (
+                        pinst_reg.shape[0]
+                        if y_slice.stop is None
+                        else y_slice.stop
+                    )
+                    x_start = 0 if x_slice.start is None else x_slice.start
+                    x_stop = (
+                        pinst_reg.shape[1]
+                        if x_slice.stop is None
+                        else x_slice.stop
+                    )
+
+                    y_stop = min(y_stop, larger_subregion.shape[0], pinst_reg.shape[0])
+                    x_stop = min(x_stop, larger_subregion.shape[1], pinst_reg.shape[1])
+
+                    if y_stop <= y_start or x_stop <= x_start:
+                        continue
+
+                    obj_adj = (slice(y_start, y_stop), slice(x_start, x_stop))
+                    written_mask = larger_subregion[obj_adj] == id_
+                    pinst_reg[obj_adj][written_mask] = id_
 
             old_ids = np.concatenate(old_ids)
             pcls_out = update_dicts(pinst_, pcls_, pcls_out, t_, old_ids, initial_ids)
