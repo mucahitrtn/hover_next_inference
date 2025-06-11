@@ -605,6 +605,16 @@ class WholeSlideDataset(Dataset):
             (1 / padding_factor) * (level_shape[1] / level_crop_size_px - 1)
         ).astype(int)
 
+        # Handle tiny images where ``n_w`` or ``n_h`` might be computed as
+        # ``0`` or even a negative value. In those cases the slide is smaller
+        # than the desired crop size and a grid cannot be formed using the
+        # default formula.  Fall back to a single crop centred on the image to
+        # ensure downstream logic receives at least one coordinate.
+        if n_w < 1 or n_h < 1:
+            c_x = np.array([level_shape[0] // 2], dtype=int)
+            c_y = np.array([level_shape[1] // 2], dtype=int)
+            return np.array([c_x, c_y]).T
+
         # Compute the residual margin at each side of the image
         margin_w = (
             int(level_shape[0] - padding_factor * (n_w - 1) * level_crop_size_px) // 2
